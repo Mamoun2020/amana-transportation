@@ -1,103 +1,179 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
+import BusSelector from './components/BusSelector';
+import BusSchedule from './components/BusSchedule';
+import Header from './components/Header';
+import { BusData, BusLine } from './types/bus';
+
+// Dynamically import the map component to avoid SSR issues
+const DynamicMap = dynamic(() => import('./components/BusMap'), {
+  ssr: false,
+  loading: () => <div className="w-full h-96 bg-gray-200 animate-pulse rounded-lg flex items-center justify-center">Loading Map...</div>
+});
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [busData, setBusData] = useState<BusData | null>(null);
+  const [selectedBus, setSelectedBus] = useState<BusLine | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  const fetchBusData = async () => {
+    try {
+      const response = await fetch('/api/bus-data');
+      if (!response.ok) {
+        throw new Error('Failed to fetch bus data');
+      }
+      const data = await response.json();
+      
+      // Check if the response contains an error
+      if (data.error) {
+        throw new Error(data.message || data.error);
+      }
+      
+      // Check if we're using fallback data
+      const isFallback = response.headers.get('X-Data-Source') === 'fallback';
+      setIsDemoMode(isFallback);
+      
+      setBusData(data);
+      if (data.bus_lines && data.bus_lines.length > 0) {
+        setSelectedBus(data.bus_lines[0]);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBusData();
+    // Refresh data every 30 seconds
+    const interval = setInterval(fetchBusData, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading) {
+  return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading bus data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-600 text-xl mb-4">⚠️</div>
+          <p className="text-red-600 mb-4">Error: {error}</p>
+          <button 
+            onClick={fetchBusData}
+            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!busData) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-600">No data available</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Header companyInfo={busData.company_info} />
+      
+      {/* Demo Mode Banner */}
+      {isDemoMode && (
+        <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-yellow-700">
+                <strong>Demo Mode:</strong> The external API is not accessible. Showing sample data for demonstration purposes.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <main className="container mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Bus Selection Panel */}
+          <div className="lg:col-span-1">
+            <BusSelector 
+              busLines={busData.bus_lines}
+              selectedBus={selectedBus}
+              onBusSelect={setSelectedBus}
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+          </div>
+
+          {/* Map and Schedule */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Map */}
+            <div className="bg-white rounded-lg shadow-md overflow-hidden">
+              <div className="p-4 border-b">
+                <h2 className="text-xl font-semibold text-gray-800">
+                  {selectedBus ? `${selectedBus.name} - Live Map` : 'Select a Bus Route'}
+                </h2>
+              </div>
+              <div className="h-96">
+                {selectedBus ? (
+                  <DynamicMap busLine={selectedBus} />
+                ) : (
+                  <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                    <p className="text-gray-500">Please select a bus route to view the map</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Schedule Table */}
+            {selectedBus && (
+              <BusSchedule busLine={selectedBus} />
+            )}
+          </div>
+        </div>
+
+        {/* Operational Summary */}
+        <div className="mt-8 bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-4">Operational Summary</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">{busData.operational_summary.total_buses}</div>
+              <div className="text-sm text-gray-600">Total Buses</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600">{busData.operational_summary.active_buses}</div>
+              <div className="text-sm text-gray-600">Active Buses</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-orange-600">{busData.operational_summary.current_passengers}</div>
+              <div className="text-sm text-gray-600">Current Passengers</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-600">{busData.operational_summary.average_utilization}%</div>
+              <div className="text-sm text-gray-600">Avg Utilization</div>
+            </div>
+          </div>
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
     </div>
   );
 }
